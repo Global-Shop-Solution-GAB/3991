@@ -1,0 +1,327 @@
+Program.Sub.ScreenSU.Start
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+Variable.UDT.uJH.Define("JOB",String,JOB)
+Variable.UDT.uJH.Define("SUFFIX",String,SUFFIX)
+Variable.UDT.uJH.Define("DATE_DUE",Date,DATE_DUE)
+Variable.UDT.uJH.Define("QTY_ORDER",Float,QTY_ORDER)
+Variable.UDT.uJH.Define("QTY_COMPLETED",Float,QTY_COMPLETED)
+Variable.uGlobal.uJH.Declare("uJH")
+Variable.UDT.uJO.Define("JOB",String,JOB)
+Variable.UDT.uJO.Define("SUFFIX",String,SUFFIX)
+Variable.UDT.uJO.Define("SEQ",String,SEQ)
+Variable.UDT.uJO.Define("PART",String,PART)
+Variable.UDT.uJO.Define("HOURS_ESTIMATED",Float,HOURS_ESTIMATED)
+Variable.UDT.uJO.Define("HOURS_ACTUAL",Float,HOURS_ACTUAL)
+Variable.UDT.uJO.Define("UNITS",Float,UNITS)
+Variable.uGlobal.uJO.Declare("uJO")
+Variable.UDT.uINV.Define("PART",String,PART)
+Variable.UDT.uINV.Define("QTY_ONHAND",String,QTY_ONHAND)
+Variable.uGlobal.uINV.Declare("uINV")
+
+Variable.UDT.uQtyTemp.Define("Pos",Long)
+Variable.UDT.uQtyTemp.Define("Qty",Float)
+
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+F.ODBC.Connection!conX.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass)
+
+'Quote 5383 Refer to Notes for Mor infor
+'initiate udt's
+V.uGlobal.uINV.Redim(-1,-1)
+V.uGlobal.uJH.Redim(-1,-1)
+V.uGlobal.uJO.Redim(-1,-1)
+
+'get our jobs then based off of that get our open sequences
+Function.Intrinsic.Control.CallSub(Get_jobs)
+'figure out which jobs is ready or not
+Function.Intrinsic.Control.CallSub(Calc_isready)
+'call unload cause we are done.
+F.Intrinsic.Control.CallSub(Unload)
+
+
+
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3991_Job_Can_Make_Date.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.Debug.SetLA(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Main.End
+
+Program.Sub.Unload.Start
+F.Intrinsic.Control.SetErrorHandler("Unload_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+
+F.ODBC.Connection!conX.Close
+
+F.Intrinsic.Control.End
+
+
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Unload_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3991_Job_Can_Make_Date.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.Debug.SetLA(V.Local.sError)
+	F.Intrinsic.Control.end
+Function.Intrinsic.Control.EndIf
+
+Program.Sub.Unload.End
+
+Program.Sub.Get_Jobs.Start
+F.Intrinsic.Control.SetErrorHandler("Get_Jobs_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.sSQL.Declare(String)
+
+'Get a list of open jobs and their due dates
+F.ODBC.Connection!conX.OpenLocalRecordsetRO("rst","Select Job,Suffix,Date_Due, Qty_Order,Qty_Completed From V_Job_Header Where Date_Closed = '1900-01-01' Order By Date_Due,Job,Suffix")
+Function.Intrinsic.Control.If(V.ODBC.conX!rst.EOF,=,True)
+	F.ODBC.conX!rst.close
+	F.Intrinsic.Debug.SetLA("No Open Jobs Found. Ending my processing.")
+	F.Intrinsic.Control.CallSub(Unload)
+F.Intrinsic.Control.Else
+	'here we are going to load them into our udt.
+	F.Intrinsic.Variable.LoadUDTFromRecordset("conx","rst","v.uglobal.uJH",False,100)
+	F.ODBC.conX!rst.Close
+'	'forcibly grab our recrods from the Job Operations database, sub query to select only those jobs that are opened
+'	'i know it's nightly task, but why all that unecessary looping. tis no need for that.
+'	f.ODBC.Connection!conX.OpenLocalRecordsetRO("rst","Select Job,Suffix,Seq,Part,Hours_Estimated,Hours_Actual,Units_Complete Where LMO ='M' And Seq < '995000' And Flag_Closed <>'Y' And Hours_Actual = 0 And Concat(Job,Suffix) As JS In (Select Concat(Job,Suffix AS JS From V_JOB_HEADER Where Date_CLOSED <>'1900-01-01')")
+'	Function.Intrinsic.Control.If(v.ODBC.conX!rst.EOF,<>,True)
+'		f.Intrinsic.Variable.LoadUDTFromRecordset("conx","Rst","v.uglobal.uJO",False,1000)
+'	F.Intrinsic.Control.EndIf
+'	f.ODBC.conX!rst.Close
+Function.Intrinsic.Control.EndIf
+
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Get_Jobs_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3991_Job_Can_Make_Date.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.Debug.SetLA(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+Program.Sub.Get_Jobs.End
+
+Program.Sub.Calc_IsReady.Start
+F.Intrinsic.Control.SetErrorHandler("Calc_IsReady_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.fOpenReq.Declare(Float)
+V.Local.fQtyOnHand.Declare(Float)
+V.Local.bCanMake.Declare(Boolean)
+V.Local.iUB.Declare(Long)
+V.Local.sRet.Declare(String)
+V.Local.sSQL.Declare(String)
+V.Local.sPart.Declare(String)
+V.uLocal.uQtyTemp.Declare("uQtyTemp")
+V.Local.iQtyTemp.Declare(Long)
+V.Local.bNum.Declare(Boolean)
+
+V.Local.fUnits.Declare(Float)
+
+
+ F.Intrinsic.Control.For(V.Local.iUB,0,V.uGlobal.uJH.UBound,1)
+	'we are starting each time lets redim our ulocal
+	V.uLocal.uQtyTemp.Redim(0,0)
+	V.Local.iQtyTemp.Set(-1)
+
+	'grab all labor sequences from this open job that have not yet begun, open and inactive
+	F.Intrinsic.String.Build("Select Job,Suffix,Seq,Part,Hours_Estimated,Hours_Actual,Units From V_JOB_OPERATIONS Where LMO ='M' And Seq < '995000' And Flag_Closed <>'Y' And Hours_Actual = 0 And Job = '{0}' And Suffix = '{1}' Order By Seq",V.uGlobal.uJH(v.Local.iUB)!JOB,V.uGlobal.uJH(v.Local.iUB)!SUFFIX,V.Local.sSQL)
+	F.ODBC.Connection!conX.OpenLocalRecordsetRO("rst",V.Local.sSQL)
+	F.Intrinsic.Control.If(V.ODBC.conX!rst.EOF,=,True)
+		V.Local.bCanMake.Set(False)
+	F.Intrinsic.Control.Else
+		F.Intrinsic.Control.DoUntil(V.ODBC.conX!rst.EOF,=,True)
+			V.Local.sPart.Set(V.ODBC.conX!rst.FieldValTrim!Part)
+			'do we have this part in udt call sub to get our on hand qty and it will be returned to us.
+			F.Intrinsic.Control.CallSub(Get_inv_onhand,"Part",V.Local.sPart.Trim)
+			V.Local.fQtyOnHand.Set(V.Args.fQtyOnHand)
+			'Determine the open requirements
+			'(Job_Header.Qty_Order - JH.Qty_Completed) * Job_Operations.Units = Open Requirements that' whats one section of the quote says, another section of the quote says something else.
+			F.Intrinsic.Math.Sub(V.uGlobal.uJH(v.Local.iUB)!QTY_ORDER,V.uGlobal.uJH(v.Local.iUB)!QTY_COMPLETED,V.Local.fOpenReq)
+			'we are going to go with what makes senese. Why we need to multiply by units/ Aye? HAVE TO CONFIRM WITH JULIE FIRST>
+''			f.Intrinsic.Math.Sub(v.ODBC.conX!rst.FieldValFloat!Hours_Estimated, v.ODBC.conx!rst.FieldValFloat!Hours_Actual,v.Local.fOpenReq)
+			Function.Intrinsic.Debug.SetLA("Qty Order : ",V.uGlobal.uJH(v.Local.iUB)!QTY_ORDER,"   Qty  Completed: ",V.uGlobal.uJH(v.Local.iUB)!QTY_COMPLETED)
+'			'multiply by units
+
+
+			'check to make sure that units is zero. If unit is
+'			f.Intrinsic.Variable.SetNumeric(v.ODBC.conX!rst.FieldValTrim!Units,0,v.Local.fUnits)
+'			f.Intrinsic.Variable.isNumeric(v.ODBC.conX!rst.FieldValTrim!Units,v.Local.bNum)
+			V.Local.fUnits.Set(V.ODBC.conX!rst.FieldVal!Units)
+'			F.Intrinsic.Control.If(v.Local.bNum,=,False)
+'				V.Local.fUnits.Set(0)
+'			Function.Intrinsic.Control.Else
+'				V.Local.fUnits.Set(v.ODBC.conX!rst.FieldVal!Units)
+'			Function.Intrinsic.Control.Endif
+			
+'			Function.Intrinsic.Debug.SetLA("Units : ", v.Local.fUnits) 						
+			F.Intrinsic.Math.Mult(V.Local.fOpenReq,V.Local.fUnits,V.Local.fOpenReq)
+'			Function.Intrinsic.Debug.SetLA("fOpen Req: ", v.Local.fOpenReq) 						
+			
+			Function.Intrinsic.Control.If(V.Local.fQtyOnHand,>=,V.Local.fOpenReq)
+				'we can make it
+				V.Local.bCanMake.Set(True)
+			F.Intrinsic.Control.else
+				'we can't make it.
+				V.Local.bCanMake.Set(False)
+			Function.Intrinsic.Control.EndIf
+'
+			'have to store our previous records just in case we have to revert out quantities back we have to store them somewhere.
+			F.Intrinsic.Math.Add(V.Local.iQtyTemp,1,V.Local.iQtyTemp)
+			'redim our array
+			V.uLocal.uQtyTemp.RedimPreserve(0,V.Local.iQtyTemp)
+			V.uLocal.uQtyTemp(v.Local.iQtyTemp)!Pos.Set(V.Args.Pos)
+			V.uLocal.uQtyTemp(v.Local.iQtyTemp)!Qty.Set(V.Local.fOpenReq)
+			'well to avoid unecessary looping if we can't make it at any point right now why not get our of the loop?
+			F.Intrinsic.Control.If(V.Local.bCanMake,=,False)
+				F.Intrinsic.Control.ExitDo
+			Function.Intrinsic.Control.EndIf
+
+			F.ODBC.conX!rst.MoveNext
+		Function.Intrinsic.Control.Loop
+	Function.Intrinsic.Control.EndIf
+
+	F.ODBC.conX!rst.Close
+	F.Intrinsic.Control.If(V.Local.bCanMake,=,True)
+
+			'we are going to set our value to the current date within the table
+		F.Intrinsic.String.Build("Select Job,Suffix,User_2 From WO_USER_Flds Where Job = '{0}' And Suffix = '{1}'",V.uGlobal.uJH(v.Local.iUB)!JOB,V.uGlobal.uJH(v.Local.iUB)!SUFFIX,V.Local.sSQL)
+		F.ODBC.Connection!conX.OpenLocalRecordsetRW("rst",V.Local.sSQL)
+		F.Intrinsic.Control.If(V.ODBC.conX!rst.EOF,<>,True)
+			'only update is User_2 is blank, if there is something in it, we aren't doing anything.
+			F.Intrinsic.Control.If(V.ODBC.conx!rst.FieldValTrim!User_2,=,"")
+				F.ODBC.conX!rst.Set!User_2(V.Ambient.Date)
+			Function.Intrinsic.Control.EndIf
+		Function.Intrinsic.Control.Else
+			'we have to add a new record cause at this time the table only has stuff if the job/ssuffix actually have been entered by a user.
+			F.ODBC.conX!rst.AddNew
+			F.ODBC.conX!rst.Set!Job(V.uGlobal.uJH(v.Local.iUB)!JOB)
+			F.ODBC.conX!rst.Set!Suffix(V.uGlobal.uJH(v.Local.iUB)!SUFFIX)
+			F.ODBC.conX!rst.Set!User_2(V.Ambient.Date)
+		Function.Intrinsic.Control.EndIf
+		F.ODBC.conX!rst.Update
+		F.ODBC.conX!rst.Close
+
+		'THEN REDUCE OUR QTY FROM OUR UDT. If we can't make it we haven't reduced anything so no harm, but if we can make it we need to reduce most surely.
+		F.Intrinsic.Control.For(V.Local.iQtyTemp,0,V.uLocal.uQtyTemp.UBound,1)
+			'the ulocal and uinv globla arrays are linked together POS in uloca is UB in uGlobal. Same with qty
+			F.Intrinsic.Math.Sub(V.uGlobal.uINV(V.uLocal.uQtyTemp(V.Local.iQtyTemp)!Pos)!QTY_ONHAND,V.uLocal.uQtyTemp(v.Local.iQtyTemp)!Qty,V.uGlobal.uINV(v.uLocal.uQtyTemp(v.Local.iQtyTemp)!Pos)!QTY_ONHAND)
+		F.Intrinsic.Control.Next(V.Local.iQtyTemp)
+	F.Intrinsic.Control.Else
+		'so the only time it's going to change from a date to nothing if we can't no longer make the date. If we can't make it lets update that 2 blank
+		F.Intrinsic.String.Build("Update WO_USER_Flds Set User_2 = '' Where Job = '{0}' And Suffix = '{1}'",V.uGlobal.uJH(v.Local.iUB)!JOB,V.uGlobal.uJH(v.Local.iUB)!SUFFIX,V.Local.sSQL)
+		F.ODBC.Connection!conX.Execute(V.Local.sSQL)
+	Function.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.Next(V.Local.iUB)
+
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Calc_IsReady_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3991_Job_Can_Make_Date.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.Debug.SetLA(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+Program.Sub.Calc_IsReady.End
+
+Program.Sub.Get_Inv_Onhand.Start
+F.Intrinsic.Control.SetErrorHandler("Get_Inv_Onhand_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.sSQL.Declare(String)
+V.Local.iUB.Declare(Long)
+V.Local.sPart.Declare(String)
+V.Local.iR.Declare(Long)
+V.Local.sRet.Declare(String)
+V.Local.fQty.Declare(Float)
+
+'are args from the call sub calc_isready
+V.Local.sPart.Set(V.Args.Part)
+
+'try to find out part in our udt.
+F.Intrinsic.Variable.UDTMultiSeek(V.uGlobal.uINV!PART,V.Local.sPart.Trim,V.Local.sRet)
+F.Intrinsic.Control.If(V.Local.sRet.Trim,=,"")
+	'so we know our part doesn't exist within our udt. we are going to add to it.
+	F.Intrinsic.String.Build("Select Part,Qty_OnHand From V_Inventory_MSTR Where Part = '{0}'",V.Local.sPart.Trim,V.Local.sSQL)
+	F.ODBC.Connection!conX.OpenLocalRecordsetRO("rst",V.Local.sSQL)
+	Function.Intrinsic.Control.If(V.ODBC.conX!rst.EOF,<>,True)
+		V.Local.fQty.Set(V.ODBC.conX!rst.FieldValFloat!Qty_ONHand)
+	Function.Intrinsic.Control.Else
+		V.Local.fQty.Set(0)
+	Function.Intrinsic.Control.Endif
+	F.ODBC.conX!rst.close
+	'store this within ou udt. for future since we don't have to find it again within our recordset and reset it
+	Function.Intrinsic.Control.If(V.uGlobal.uINV.UBound,=,-1)
+		V.uGlobal.uINV.Redim(0,0)
+		V.Local.iUB.Set(0)
+	Function.Intrinsic.Control.Else
+		F.Intrinsic.Math.Add(V.uGlobal.uINV.UBound,1,V.Local.iUB)
+		V.uGlobal.uINV.RedimPreserve(0,V.Local.iUB)
+	Function.Intrinsic.Control.EndIf
+	V.uGlobal.uINV(v.Local.iUB)!PART.Set(V.Local.sPart.Trim)
+	V.uGlobal.uINV(v.Local.iUB)!QTY_ONHAND.Set(V.Local.fQty)
+	F.Intrinsic.Variable.AddRV("Pos",V.Local.iUb)
+Function.Intrinsic.Control.Else
+	'tis existint within our udt. We are going to grab that record and return it!
+	F.Intrinsic.String.Split(V.Local.sRet,"*!*",V.Local.sRet)
+	'only going to grab the first occurence even though we should only have 1 occurence within our udt.
+	V.Local.fQty.Set(V.uGlobal.uINV(v.Local.sret(0))!QTY_ONHAND)
+	F.Intrinsic.Variable.AddRV("Pos",V.Local.sRet(0))
+Function.Intrinsic.Control.EndIf
+
+F.Intrinsic.Variable.AddRV("fQtyOnHand",V.Local.fQty)
+
+
+
+
+
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Get_Inv_Onhand_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3991_Job_Can_Make_Date.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.Debug.SetLA(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+Program.Sub.Get_Inv_Onhand.End
+
+Program.Sub.Comments.Start
+${$0$}$$}$TRT$}$4/10/2015 1:36:04 PM
+${$3$}$0$}$$}$0$}$-1$}$$}$12:00:00 AM$}$Quote 5383
+Rev 3
+
+Code TRT
+
+4/10/15
+
+Program.Sub.Comments.End
+
